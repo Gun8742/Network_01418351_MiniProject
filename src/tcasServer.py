@@ -15,15 +15,22 @@ while True:
     message = data.decode("utf-8")
     parts = message.split()
 
-    if len(parts) != 5 or parts[0] != "PING":
-        response = "400 BAD_REQUEST INVALID_FORMAT"
+    if len(parts) != 7 or parts[0] != "TCASP/1.0" or parts[1] != "PING":
+        response = "TCASP/1.0 0 400 BAD_REQUEST INVALID_FORMAT"
         socketServer.sendto(response.encode("utf-8"), addr)
         continue
 
-    flightID = parts[1]
-    posX = float(parts[2])
-    posY = float(parts[3])
-    posZ = float(parts[4])
+    seq = parts[2]
+    flightID = parts[3]
+    try:
+        posX = float(parts[4])
+        posY = float(parts[5])
+        posZ = float(parts[6])
+    except ValueError:
+        print(f"[ERROR] Invalid coordinate from {flightID}: {parts[4]} {parts[5]} {parts[6]}")
+        response = f"TCASP/1.0 {seq} 400 BAD_REQUEST INVALID_COORDINATE"
+        socketServer.sendto(response.encode("utf-8"), addr)
+        continue
     aircrafts[flightID] = {
         "posX": posX,
         "posY": posY,
@@ -35,47 +42,50 @@ while True:
 
     if len(aircrafts) < 2:
         status = "200 CLEAR MAINTAIN_HEADING"
-        response = f"[{flightID}] {status}"
+        response = f"TCASP/1.0 {seq} [{flightID}] {status}"
         socketServer.sendto(response.encode("utf-8"), addr)
         print(f"[SEND] {flightID:<8} {status}")
     else:
         ids = list(aircrafts.keys())
-        plane1 = aircrafts[ids[0]]
-        plane2 = aircrafts[ids[1]]
-        total_distance = math.sqrt((plane1["posX"] - plane2["posX"]) ** 2 + (plane1["posZ"] - plane2["posZ"]) ** 2)
-        vertical_gap = abs(plane1["posY"] - plane2["posY"])
+        for i in range(len(ids) - 1):
+            plane1 = aircrafts[ids[i]]
+            for j in range(i + 1, len(ids)):
+                plane2 = aircrafts[ids[j]]
+                total_distance = math.sqrt((plane1["posX"] - plane2["posX"]) ** 2 + (plane1["posZ"] - plane2["posZ"]) ** 2)
+                vertical_gap = abs(plane1["posY"] - plane2["posY"])
 
-        print(f"[CALC] {ids[0]} <-> {ids[1]}   distance={total_distance:>5.2f} nm   gap={vertical_gap:>5.0f} ft")
+                print(f"[CALC] {ids[i]} <-> {ids[j]}   distance={total_distance:>5.2f} nm   gap={vertical_gap:>5.0f} ft")
 
-        if total_distance > 5.0 or vertical_gap >= 1000:
-            status1 = "200 CLEAR MAINTAIN_HEADING"
-            status2 = "200 CLEAR MAINTAIN_HEADING"
-        elif total_distance > 2.0:
-            status1 = f"300 TA_TRAFFIC MONITOR_CLOSELY (FOUND {ids[1]})"
-            status2 = f"300 TA_TRAFFIC MONITOR_CLOSELY (FOUND {ids[0]})"
-        elif total_distance > 0.0:
-            status1 = f"401 RA_CLIMB CLIMB_IMMEDIATELY (FOUND {ids[1]})"
-            status2 = f"402 RA_DESCEND DESCEND_IMMEDIATELY (FOUND {ids[0]})"
-        else:
-            status1 = "500 DISCONNECT CRASHED"
-            status2 = "500 DISCONNECT CRASHED"
+                if total_distance > 5.0 or vertical_gap >= 1000:
+                    status1 = "200 CLEAR MAINTAIN_HEADING"
+                    status2 = "200 CLEAR MAINTAIN_HEADING"
+                elif total_distance > 2.0:
+                    status1 = f"300 TA_TRAFFIC MONITOR_CLOSELY (FOUND {ids[j]})"
+                    status2 = f"300 TA_TRAFFIC MONITOR_CLOSELY (FOUND {ids[i]})"
+                elif total_distance > 0.0:
+                    status1 = f"401 RA_CLIMB CLIMB_IMMEDIATELY (FOUND {ids[j]})"
+                    status2 = f"402 RA_DESCEND DESCEND_IMMEDIATELY (FOUND {ids[i]})"
+                else:
+                    status1 = "500 DISCONNECT CRASHED"
+                    status2 = "500 DISCONNECT CRASHED"
 
-        response1 = f"[{ids[0]}] {status1}"
-        response2 = f"[{ids[1]}] {status2}"
+                response1 = f"TCASP/1.0 {seq} [{ids[i]}] {status1}"
+                response2 = f"TCASP/1.0 {seq} [{ids[j]}] {status2}"
 
-        if total_distance <= 2.0 and vertical_gap < 1000:
-            socketServer.sendto(response1.encode("utf-8"), plane1["addr"])
-            socketServer.sendto(response2.encode("utf-8"), plane2["addr"])
-            print(f"[SEND] {ids[0]:<8} {status1}")
-            print(f"[SEND] {ids[1]:<8} {status2}")
-        elif flightID == ids[0]:
-            socketServer.sendto(response1.encode("utf-8"), addr)
-            print(f"[SEND] {ids[0]:<8} {status1}")
-        else:
-            socketServer.sendto(response2.encode("utf-8"), addr)
-            print(f"[SEND] {ids[1]:<8} {status2}")
+                if "CLEAR" in status1:
+                    if flightID == ids[i]:
+                        socketServer.sendto(response1.encode("utf-8"), plane1["addr"])
+                        print(f"[SEND] {ids[i]:<8} {status1}")
+                    else:
+                        socketServer.sendto(response2.encode("utf-8"), plane2["addr"])
+                        print(f"[SEND] {ids[j]:<8} {status2}")
+                else:
+                    socketServer.sendto(response1.encode("utf-8"), plane1["addr"])
+                    socketServer.sendto(response2.encode("utf-8"), plane2["addr"])
+                    print(f"[SEND] {ids[i]:<8} {status1}")
+                    print(f"[SEND] {ids[j]:<8} {status2}")
 
-        if total_distance == 0.0 and vertical_gap < 1000:
-            print(f"[INFO] {ids[0]} and {ids[1]} crashed, removed from radar")
-            del aircrafts[ids[0]]
-            del aircrafts[ids[1]]
+                if total_distance == 0.0 and vertical_gap < 1000:
+                    print(f"[INFO] {ids[i]} and {ids[j]} crashed, removed from radar")
+                    del aircrafts[ids[i]]
+                    del aircrafts[ids[j]]
