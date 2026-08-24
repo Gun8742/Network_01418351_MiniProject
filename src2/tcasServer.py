@@ -3,6 +3,7 @@ import math;
 
 HOST = "127.0.0.1";
 PORT = 8080;
+CRASH_DIST = 0.2;
 
 print("""
   _______   _____           _____   _____
@@ -58,9 +59,14 @@ while True:
         print(f"[SEND] {flightID:<8} {status}");
     else:
         ids = list(aircrafts.keys());
+        crashed = set();
         for i in range(len(ids) - 1):
+            if (ids[i] in crashed):
+                continue;
             plane1 = aircrafts[ids[i]];
             for j in range(i + 1, len(ids)):
+                if (ids[j] in crashed):
+                    continue;
                 plane2 = aircrafts[ids[j]];
                 total_distance = math.sqrt((plane1["posX"] - plane2["posX"]) ** 2 + (plane1["posZ"] - plane2["posZ"]) ** 2);
                 vertical_gap = abs(plane1["posY"] - plane2["posY"]);
@@ -68,12 +74,12 @@ while True:
                 print(f"[CALC] {ids[i]} <-> {ids[j]}   distance ={total_distance:>5.2f} nm   gap ={vertical_gap:>5.0f} ft");
 
                 if total_distance > 5.0 or vertical_gap >= 1000:
-                    status1 = "200 CLEAR MAINTAIN_HEADING";
-                    status2 = "200 CLEAR MAINTAIN_HEADING";
+                    status1 = f"200 CLEAR MAINTAIN_HEADING (FOUND {ids[j]})";
+                    status2 = f"200 CLEAR MAINTAIN_HEADING (FOUND {ids[i]})";
                 elif total_distance > 2.0:
                     status1 = f"300 TA_TRAFFIC MONITOR_CLOSELY (FOUND {ids[j]})";
                     status2 = f"300 TA_TRAFFIC MONITOR_CLOSELY (FOUND {ids[i]})";
-                elif total_distance > 0.0:
+                elif total_distance > CRASH_DIST:
                     status1 = f"401 RA_CLIMB CLIMB_IMMEDIATELY (FOUND {ids[j]})";
                     status2 = f"402 RA_DESCEND DESCEND_IMMEDIATELY (FOUND {ids[i]})";
                 else:
@@ -87,7 +93,7 @@ while True:
                     if flightID == ids[i]:
                         socketServer.sendto(response1.encode("utf-8"), plane1["addr"]);
                         print(f"[SEND] {ids[i]:<8} {status1}");
-                    else:
+                    elif flightID == ids[j]:
                         socketServer.sendto(response2.encode("utf-8"), plane2["addr"]);
                         print(f"[SEND] {ids[j]:<8} {status2}");
                 else:
@@ -96,7 +102,8 @@ while True:
                     print(f"[SEND] {ids[i]:<8} {status1}");
                     print(f"[SEND] {ids[j]:<8} {status2}");
 
-                if total_distance == 0.0 and vertical_gap < 1000:
+                if total_distance <= CRASH_DIST and vertical_gap < 1000:
                     print(f"[INFO] {ids[i]} and {ids[j]} crashed, removed from radar");
-                    del aircrafts[ids[i]];
-                    del aircrafts[ids[j]];
+                    crashed.add(ids[i]);
+                    crashed.add(ids[j]);
+                    break;
