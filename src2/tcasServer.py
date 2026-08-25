@@ -107,3 +107,5 @@ while True:
                     crashed.add(ids[i]);
                     crashed.add(ids[j]);
                     break;
+        for fid in crashed:
+            del aircrafts[fid];
