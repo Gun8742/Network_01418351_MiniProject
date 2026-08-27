@@ -51,7 +51,8 @@ while True:
         "posY": posY,
         "posZ": posZ,
         "addr": addr,
-        "last_seen": time.time()
+        "last_seen": time.time(),
+        "seq": seq
     };
 
     print(f"\n[RECV] {flightID:<8} X ={posX:>6.1f}  Y ={posY:>6.0f} ft  Z ={posZ:>6.1f}");
@@ -97,8 +98,8 @@ while True:
                     status1 = "500 DISCONNECT CRASHED";
                     status2 = "500 DISCONNECT CRASHED";
 
-                response1 = f"TCASP/1.0 {seq} [{ids[i]}] {status1}";
-                response2 = f"TCASP/1.0 {seq} [{ids[j]}] {status2}";
+                response1 = f"TCASP/1.0 {plane1['seq']} [{ids[i]}] {status1}";
+                response2 = f"TCASP/1.0 {plane2['seq']} [{ids[j]}] {status2}";
 
                 if "CLEAR" in status1:
                     if flightID == ids[i]:

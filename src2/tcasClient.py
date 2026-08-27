@@ -31,6 +31,7 @@ is_crash = args.crash;
 message = f"TCASP/1.0 PING {seq} {flightID} {posX} {posY} {posZ}";
 running = True;
 worst = "";
+lock = threading.Lock();
 
 print(f"""
  __________________________________________________
@@ -64,14 +65,14 @@ def receive_loop():
                 data, _ = socketClient.recvfrom(1024);
                 response = data.decode("utf-8");
                 print(f"[RECV] {response}");
-
-                if "DISCONNECT" in response:
-                    worst = "DISCONNECT";
-                    running = False;
-                elif "RA_CLIMB" in response:
-                    worst = "RA_CLIMB";
-                elif "RA_DESCEND" in response:
-                    worst = "RA_DESCEND";
+                with lock:
+                    if "DISCONNECT" in response:
+                        worst = "DISCONNECT";
+                        running = False;
+                    elif "RA_CLIMB" in response:
+                        worst = "RA_CLIMB";
+                    elif "RA_DESCEND" in response:
+                        worst = "RA_DESCEND";
             except socket.timeout:
                 continue;
             
@@ -81,20 +82,22 @@ def send_loop():
         # Send current position
         socketClient.sendto(message.encode("utf-8"), (HOST, PORT));
         time.sleep(2);
+        with lock:
+            current = worst;
+            worst = "";
 
-        if "DISCONNECT" in worst:
+        if "DISCONNECT" in current:
             break;
             
         if not is_crash:
             # Normal RA handling
-            if "RA_CLIMB" in worst:
+            if "RA_CLIMB" in current:
                 posY += 1000;
-            elif "RA_DESCEND" in worst:
+            elif "RA_DESCEND" in current:
                 posY -= 1000;
         
         # Update position for next step
         posX += dx;
-        worst = "";
         seq += 1;
         message = f"TCASP/1.0 PING {seq} {flightID} {posX} {posY} {posZ}";
 
