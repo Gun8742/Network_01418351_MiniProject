@@ -1,9 +1,11 @@
 import socket;
 import math;
+import time;
 
 HOST = "127.0.0.1";
 PORT = 8080;
 CRASH_DIST = 0.2;
+TIMEOUT = 6;
 
 print("""
   _______   _____           _____   _____
@@ -42,15 +44,24 @@ while True:
         response = f"TCASP/1.0 {seq} 400 BAD_REQUEST INVALID_COORDINATE";
         socketServer.sendto(response.encode("utf-8"), addr);
         continue;
+
     
     aircrafts[flightID] = {
         "posX": posX,
         "posY": posY,
         "posZ": posZ,
-        "addr": addr
+        "addr": addr,
+        "last_seen": time.time()
     };
 
     print(f"\n[RECV] {flightID:<8} X ={posX:>6.1f}  Y ={posY:>6.0f} ft  Z ={posZ:>6.1f}");
+
+    now = time.time();
+    ids = list(aircrafts.keys());
+    for fid in ids:
+        if (now - aircrafts[fid]["last_seen"] > TIMEOUT):
+            print(f"[INFO] {fid} timed out, removed from radar");
+            del aircrafts[fid];
 
     if len(aircrafts) < 2:
         status = "200 CLEAR MAINTAIN_HEADING";
